@@ -1,5 +1,7 @@
 ---
 title: "Statistical inference with the GSS data"
+author: "James Sheldon"
+date: "March 31, 2017"
 output: 
   html_document: 
     fig_height: 4
@@ -55,3 +57,12 @@ in the project you submit. Delete this note when before you submit your work.
 NOTE: Insert code chunks as needed by clicking on the "Insert a new code chunk" 
 button (green button with orange arrow) above. Make sure that your code is visible
 in the project you submit. Delete this note when before you submit your work.
+
+* * *
+
+
+## Part 5: Session Info
+
+```{r session_info}
+sessionInfo()
+```
