@@ -14,41 +14,101 @@ output:
 ### Load packages
 
 ```{r load-packages, message = FALSE}
-library(ggplot2)
-library(dplyr)
-library(statsr)
+library(tidyverse)
+
 ```
 
 ### Load data
-
-Make sure your data and R Markdown files are in the same directory. When loaded
-your data file will be called `gss`. Delete this note when before you submit 
-your work. 
 
 ```{r load-data}
 load("gss.Rdata")
 ```
 
+### Load function
 
+```{r load-function}
+comma <- function(x) {
+    format(x, digits = 2, big.mark = ",", scientific = FALSE)
+}
+```
 
 * * *
 
 ## Part 1: Data
 
+The data come from [NORC at the University of Chicago](http://www.norc.org/Pages/default.aspx). It is part of their bi-annual [General Social Survey](http://gss.norc.org/), or GSS. The survey has been conducted since 1972 and is considered statistically significant. 
+
+The GSS contains a standard core of demographic, behavioral, and attitudinal questions, plus topics of special interest. Among the topics covered are civil liberties, crime and violence, intergroup tolerance, morality, national spending priorities, psychological well-being, social mobility, and stress and traumatic events.
+
+Altogether the GSS is the single best source for sociological and attitudinal trend data covering the United States. It allows researchers to examine the structure and functioning of society in general as well as the role played by relevant subgroups and to compare the United States to other nations.
+
+The GSS aims to make high-quality data easily accessible to scholars, students, policy makers, and others, with minimal cost and waiting.
+
+There are a significant number of variables captured for each respondent. More information on all the variables is available on the [NORC Documentation site](http://gss.norc.org/Get-Documentation).
+
+Regarding the data, fewer than 5,000 Americans are selected annually to respond to the survey. Based on the [GSS Participant](http://gss.norc.org/For-Survey-Participants) page:
+
+- Your household address was randomly selected from a scientific sample designed to represent a cross-section of the country.
+- The random selection of households from across the United States ensures that the results of the survey are scientifically valid.
+- All households from across the country had an equal chance of being selected for this survey.
+- Your opinions cannot be replaced by anyone else!
 
 * * *
 
 ## Part 2: Research question
 
+Consdidering the strongly polar political atmosphere these days, I thought it'd be worth while to explore a question related to that topic. More specifically:
 
+**Is there a correlation between your age and your confidence in Congress?**
+
+Our federal government is imporatant and everyone should feel confident in their elected officials. Lack of confidence suggests a broken system that needs mending. It would be interesting to see if there is a correlation between age and federal optimism.
 
 * * *
 
 ## Part 3: Exploratory data analysis
 
-NOTE: Insert code chunks as needed by clicking on the "Insert a new code chunk" 
-button (green button with orange arrow) above. Make sure that your code is visible
-in the project you submit. Delete this note when before you submit your work.
+Let's take a look at the `gss` data frame as well as the variables we will be focusing on.
+
+First the `gss` data frame has `r comma(nrow(gss))` observations of `r comma(ncol(gss))` variables. For our purposes we will be focusing on the following:
+
+- `year`
+- `age`
+- `conlegis`
+
+and forming our own variables based off these.
+
+For starters, let's create the variable `grcut` which will define age buckets and see what that gives us.
+
+```{r graph, warning=FALSE}
+gss$age_grcut <- cut(gss$age, breaks = c(-Inf, 35, 50, 65, Inf), labels = c("18-34", "35-49", "50-64", "65-"), right = FALSE)
+
+t1 <- gss %>% group_by(age_grcut) %>% summarise(n=comma(n()))
+
+knitr::kable(t1, caption = "Number of Respondents by Age Group")
+```
+
+There are only 202 respondents with no answer to age. We will exclude them from further analysis without loss of generality.
+
+Just for fun, let's see these age groups over time, excluding the NAs.
+
+```{r warning=FALSE}
+t1 <- gss %>% filter(!is.na(age_grcut)) %>% group_by(year, age_grcut) %>% summarise(n=n())
+    
+t1 %>% ggplot(mapping = aes(x = year, y = n, colour = age_grcut)) + geom_smooth(se=FALSE) + xlab("Year") + ylab("Number of Respondents") + ggtitle("Respondent Count by Year")
+```
+
+What's interesting to observe is the very large spike in responses beginning in 1990 and peeking around 2002. After that the number of individuals responding to the survey dropped substantially. It could be coincidental but September 11, 2001 could have been a contributor to the dwindling numbers since 2002.
+
+Let's focus on summarizing the information that can be useful for our purposes.
+
+```{r warning=FALSE}
+gss$conlegis2 <- 0
+gss$conlegis2[gss$conlegis == "Hardly Any"] <- 1
+gss2 <- gss %>% filter(!is.na(conlegis), !is.na(age_grcut)) %>% group_by(year, age_grcut) %>% 
+    summarise(n=n(), z = sum(conlegis2), prop = z/n)
+gss2 %>% ggplot(mapping = aes(x = year, y = prop, colour = age_grcut)) + geom_smooth(se = FALSE) + xlab("Year") + ylab("Proportion 'Hardly Any' confidence in Congress") + ggtitle("Proportion of Respondents with Hardly Any Confidence in Congress by Year and Age Group") + ylim(NA,1)
+```
+
 
 * * *
 
