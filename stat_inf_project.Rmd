@@ -1,7 +1,7 @@
 ---
 title: "Statistical inference with the GSS data"
 author: "James Sheldon"
-date: "March 31, 2017"
+date: "March 30, 2017"
 output: 
   html_document: 
     fig_height: 4
@@ -53,15 +53,17 @@ Regarding the data, fewer than 5,000 Americans are selected annually to respond 
 - All households from across the country had an equal chance of being selected for this survey.
 - Your opinions cannot be replaced by anyone else!
 
+Because of the structure of the survey, the responses are guaranteed to be independent. Further, because of the statistical significance of the data, it can easily be generalized to the entire US population. That said, it's important to note that this data is observational and hence no causal statements can be made from it.
+
 * * *
 
 ## Part 2: Research question
 
-Consdidering the strongly polar political atmosphere these days, I thought it'd be worth while to explore a question related to that topic. More specifically:
+Considering the strongly polar political atmosphere these days, I thought it'd be worth while to explore a question related to that topic. More specifically:
 
-**Is there a correlation between your age and your confidence in Congress?**
+**Is age a good predictor of confidence in Congress?**
 
-Our federal government is imporatant and everyone should feel confident in their elected officials. Lack of confidence suggests a broken system that needs mending. It would be interesting to see if there is a correlation between age and federal optimism.
+Our federal government is important and everyone should feel confident in their elected officials. Lack of confidence suggests a broken system. It would be interesting to see if there is a correlation between age and optimism in federal policy.
 
 * * *
 
@@ -80,9 +82,9 @@ and forming our own variables based off these.
 For starters, let's create the variable `grcut` which will define age buckets and see what that gives us.
 
 ```{r graph, warning=FALSE}
-gss$age_grcut <- cut(gss$age, breaks = c(-Inf, 35, 50, 65, Inf), labels = c("18-34", "35-49", "50-64", "65-"), right = FALSE)
+gss$age_group <- cut(gss$age, breaks = c(-Inf, 35, 50, 65, Inf), labels = c("18-34", "35-49", "50-64", "65-"), right = FALSE)
 
-t1 <- gss %>% group_by(age_grcut) %>% summarise(n=comma(n()))
+t1 <- gss %>% group_by(age_group) %>% summarise(n=comma(n()))
 
 knitr::kable(t1, caption = "Number of Respondents by Age Group")
 ```
@@ -92,9 +94,9 @@ There are only 202 respondents with no answer to age. We will exclude them from 
 Just for fun, let's see these age groups over time, excluding the NAs.
 
 ```{r warning=FALSE}
-t1 <- gss %>% filter(!is.na(age_grcut)) %>% group_by(year, age_grcut) %>% summarise(n=n())
+t1 <- gss %>% filter(!is.na(age_group)) %>% group_by(year, age_group) %>% summarise(n=n())
     
-t1 %>% ggplot(mapping = aes(x = year, y = n, colour = age_grcut)) + geom_smooth(se=FALSE) + xlab("Year") + ylab("Number of Respondents") + ggtitle("Respondent Count by Year")
+t1 %>% ggplot(mapping = aes(x = year, y = n, colour = age_group)) + geom_smooth(se=FALSE) + xlab("Year") + ylab("Number of Respondents") + ggtitle("Respondent Count by Year")
 ```
 
 What's interesting to observe is the very large spike in responses beginning in 1990 and peeking around 2002. After that the number of individuals responding to the survey dropped substantially. It could be coincidental but September 11, 2001 could have been a contributor to the dwindling numbers since 2002.
@@ -104,24 +106,151 @@ Let's focus on summarizing the information that can be useful for our purposes.
 ```{r warning=FALSE}
 gss$conlegis2 <- 0
 gss$conlegis2[gss$conlegis == "Hardly Any"] <- 1
-gss2 <- gss %>% filter(!is.na(conlegis), !is.na(age_grcut)) %>% group_by(year, age_grcut) %>% 
+gss2 <- gss %>% filter(!is.na(conlegis), !is.na(age_group)) %>% group_by(year, age_group) %>% 
     summarise(n=n(), z = sum(conlegis2), prop = z/n)
-gss2 %>% ggplot(mapping = aes(x = year, y = prop, colour = age_grcut)) + geom_smooth(se = FALSE) + xlab("Year") + ylab("Proportion 'Hardly Any' confidence in Congress") + ggtitle("Proportion of Respondents with Hardly Any Confidence in Congress by Year and Age Group") + ylim(NA,1)
+gss2 %>% ggplot(mapping = aes(x = year, y = prop, colour = age_group)) + geom_smooth(se = FALSE) + xlab("Year") + ylab("Proportion 'Hardly Any' confidence in Congress") + ggtitle("Proportion of Respondents with Hardly Any Confidence in Congress by Year and Age Group") + ylim(NA,1)
 ```
 
 
 * * *
 
-## Part 4: Inference
+## Part 4: Inference - Multiple Proportion Hypothesis Test
 
-NOTE: Insert code chunks as needed by clicking on the "Insert a new code chunk" 
-button (green button with orange arrow) above. Make sure that your code is visible
-in the project you submit. Delete this note when before you submit your work.
+Let's begin by focusing on the first research question: Is age a good predictor of confidence in Congress? Another way to think about this is by rephrasing the question: Are you more likely to have 'Hardly Any' confidence in Congress as you age? This process will involve looking at multiple proportions across a categorical variable `age_group`.
+
+### State Hypothesis
+
+In terms of our hypothesis, we are exploring the following:
+
+$H_0: p_{18-34} = p_{35-49} = p_{50-64} = p_{65-}$
+
+$H_A$: There is some difference in the proportions.
+
+### Check Conditions
+
+- **Independence**: Based on construction of the survey, we can safely assume conditions for independence are met. It is also safe to assume we are looking at less than 10% of the American population.
+
+- **Success/Failure**: The below table outlines the success and failure count for each age bucket. Eyeballing the totals we can see we easily have a minimum of a 10% success rate (`Hardly Any`) and a minimum of a 10% failure rate (`A Great Deal` + `Only Some`) for each age bucket so we check out there too. So the assumption of a nearly normal distribution holds.
+
+```{r success_fail}
+gss2 <- gss %>% filter(!is.na(conlegis), !is.na(age_group)) %>% group_by(age_group, conlegis) %>% summarise(n=n())
+gss2$conlegis <- as.character(gss2$conlegis)
+gss2 <- gss2 %>% spread(age_group,n)
+gss2[nrow(gss2)+1,1] <- "TOTAL"
+gss2[nrow(gss2),2] = sum(gss2$`18-34`, na.rm = TRUE)
+gss2[nrow(gss2),3] = sum(gss2$`35-49`, na.rm = TRUE)
+gss2[nrow(gss2),4] = sum(gss2$`50-64`, na.rm = TRUE)
+gss2[nrow(gss2),5] = sum(gss2$`65-`, na.rm = TRUE)
+
+knitr::kable(gss2, caption = "Distribution of Respondant Answers by Age Group")
+```
+
+### Method & Inference
+
+Because we're looking at two categorical variables, each with multiple levels, we will use a Chi-Squared test to determine a p-value and decide whether or not there's enough compelling evidence to reject the null hypothesis. **R**'s built-in Chi-Squared function should do the trick:
+
+```{r}
+t1 <- chisq.test(x = gss$age_group, y = gss$conlegis)
+chisq.test(x = gss$age_group, y = gss$conlegis)
+```
+
+As we can see, there are `r t1$parameter` degrees of freedom with a large test statistic of `r t1$statistic`. The associated p-value is `r t1$p.value` which is enough compelling evidence to reject the null hypothesis and state that the difference in proportions across age groups is due to more than chance.
+
+#### Just For Fun
+
+Having verified we can reject $H_0$, let's figure out where the statistically significant comparisons are. For this we will be comparing pairwise proportions. Doing this manually means we'd be performing $\frac{n(n-1)}{2} = \frac{4\times3}{2} = 6$ proportion comparisons and six hypothesis tests. To make life easier we will be using **R**'s built-in function `pairwise.prop.test` which will return a matrix of p-values that correspond to the different fraction comparisons. The nice thing about this too is that since we're comparing ALL proportions, we can make direct inferences about all of them.
+
+```{r prop.test}
+successes <- c(3146, 3222, 2536, 2020)
+tests <- c(12494, 10677, 7867, 6450)
+pairwise.prop.test(successes, tests)
+```
+
+### Interpretation
+
+Please note that in the above, 1 = 18-34, 2 = 35-49, 3 = 50-64 and 4 = 65-. As you can see, the p-values on a 95% confidence interval for the first column (18-34 year olds compared to every other age range) suggest that we can reject $H_0$ and state that there is enough evidence suggesting that the difference in the proportion of people that view Congress negatively based on age compared to the youngest age bracket is not reasonably explained by chance. Likewise, the small p-value comparing the 35-49 age bracket and the 50-64 age bracket allows us, for those two, to also reject $H_0$ and state that the difference in the proportions there are also not due to chance.
+
+Lastly, the p-values for the comparisons between 35-49 and 65- as well as between 50-64 and 65- age brackets are large enough to where we cannot reject $H_0$ and we have to conclude that the difference is reasonably explained by chance.
+
+## Part 5: Confidence Intervals
+
+Since we can use confidence intervals, let's go ahead and do that.  All conditions have already been verified above and recall that our confidence interval is defined as 
+
+$$\text{point estimate} \pm z^* SE$$
+
+where $z^*$ is our 95% confidence interval z-score `r qnorm(.975)`, the standard error is defined by 
+
+$$SE = \sqrt{\frac{p_1(1-p_1)}{n_1}+\frac{p_2(1-p_2)}{n_2}}$$
+and our point estimate is going to be the proportion differences. In the above inference we had six different comparisons so we are now going to create six different confidence intervals using the above formulas. To make our lives easier, let's just write a function to take care of this:
+
+```{r ci_function}
+prop_ci <- function(p1,p2,n1,n2) {
+    point = p1 - p2
+    se = sqrt(p1*(1-p1)/n1 + p2*(1-p2)/n2)
+    c(point - qnorm(.975)*se, point + qnorm(.975)*se)
+}
+```
+
+Now we can just plug in our values and review:
+
+### CI 1: 18-34 compared to 35-49
+
+```{r}
+prop_ci(3146/12494,3222/10677,12494,10677)
+t1 <- prop_ci(3146/12494,3222/10677,12494,10677)
+```
+
+We can be 95% confident that the difference in the proportion of people aged 18-34 versus those aged 35-49 that unfavorably view Congress is between `r paste0(comma(t1[1]*100),"%")` and `r paste0(comma(t1[2]*100),"%")`. This agrees with our analysis above.
+
+### CI 2: 18-34 compared to 50-64
+
+```{r}
+prop_ci(3146/12494,2536/7867,12494,7867)
+t1 <- prop_ci(3146/12494,2536/7867,12494,7867)
+```
+
+We can be 95% confident that the difference in the proportion of people aged 18-34 versus those aged 50-64 that unfavorably view Congress is between `r paste0(comma(t1[1]*100),"%")` and `r paste0(comma(t1[2]*100),"%")`. This agrees with our analysis above.
+
+### CI 3: 18-34 compared to 65-
+
+```{r}
+prop_ci(3146/12494,2020/6450,12494,6450)
+t1 <- prop_ci(3146/12494,2020/6450,12494,6450)
+```
+
+We can be 95% confident that the difference in the proportion of people aged 18-34 versus those aged 65- that unfavorably view Congress is between `r paste0(comma(t1[1]*100),"%")` and `r paste0(comma(t1[2]*100),"%")`. This agrees with our analysis above.
+
+### CI 4: 35-49 compared to 50-64
+
+```{r}
+prop_ci(3222/10677,2536/7867,10677,7867)
+t1 <- prop_ci(3222/10677,2536/7867,10677,7867)
+```
+
+We can be 95% confident that the difference in the proportion of people aged 35-49 versus those aged 50-64 that unfavorably view Congress is between `r paste0(comma(t1[1]*100),"%")` and `r paste0(comma(t1[2]*100),"%")`. This agrees with our analysis above.
+
+### CI 5: 35-49 compared to 65-
+
+```{r}
+prop_ci(3222/10677,2020/6450,10677,6450)
+t1 <- prop_ci(3222/10677,2020/6450,10677,6450)
+```
+
+We can be 95% confident that the difference in the proportion of people aged 35-49 versus those aged 65- that unfavorably view Congress is between `r paste0(comma(t1[1]*100),"%")` and `r paste0(comma(t1[2]*100),"%")`. This agrees with our analysis above.
+
+### CI 6: 50-64 compared to 65-
+
+```{r}
+prop_ci(2536/7867,2020/6450,7867,6450)
+t1 <- prop_ci(2536/7867,2020/6450,7867,6450)
+```
+
+We can be 95% confident that the difference in the proportion of people aged 50-64 versus those aged 65- that unfavorably view Congress is between `r paste0(comma(t1[1]*100),"%")` and `r paste0(comma(t1[2]*100),"%")`. This agrees with our analysis above.
 
 * * *
 
 
-## Part 5: Session Info
+## Part 6: Session Info
 
 ```{r session_info}
 sessionInfo()
